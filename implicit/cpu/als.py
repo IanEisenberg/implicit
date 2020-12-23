@@ -60,6 +60,7 @@ class AlternatingLeastSquares(MatrixFactorizationBase):
         self,
         factors=100,
         regularization=0.01,
+        use_biase=False,
         dtype=np.float32,
         use_native=True,
         use_cg=True,
@@ -74,6 +75,8 @@ class AlternatingLeastSquares(MatrixFactorizationBase):
         # parameters on how to factorize
         self.factors = factors
         self.regularization = regularization
+        self.use_bias = False
+        self.dimensionality = self.factors+2 if self.use_bias else self.factors
 
         # options on how to fit the model
         self.dtype = dtype
@@ -140,9 +143,13 @@ class AlternatingLeastSquares(MatrixFactorizationBase):
         s = time.time()
         # Initialize the variables randomly if they haven't already been set
         if self.user_factors is None:
-            self.user_factors = random_state.rand(users, self.factors).astype(self.dtype) * 0.01
+            self.user_factors = random_state.rand(users, self.dimensionality).astype(self.dtype) * 0.01
+            if self.use_bias:
+                self.user_factors[:, -2] = 1.0
         if self.item_factors is None:
-            self.item_factors = random_state.rand(items, self.factors).astype(self.dtype) * 0.01
+            self.item_factors = random_state.rand(items, self.dimensionality).astype(self.dtype) * 0.01
+            if self.use_bias:
+                self.item_factors[:, -1] = 1.0
 
         log.debug("Initialized factors in %s", time.time() - s)
 
@@ -154,6 +161,10 @@ class AlternatingLeastSquares(MatrixFactorizationBase):
         solver = self.solver
 
         log.debug("Running %i ALS iterations", self.iterations)
+        if self.use_bias:
+            log.info("Training model with bias factors.")
+            log.debug("Last element of self.user_factors is user bias.",
+                      "Second-to-last element of self.item_factors is item bias.")
         with tqdm(total=self.iterations, disable=not show_progress) as progress:
             # alternate between learning the user_factors from the item_factors and vice-versa
             for iteration in range(self.iterations):
@@ -165,6 +176,8 @@ class AlternatingLeastSquares(MatrixFactorizationBase):
                     self.regularization,
                     num_threads=self.num_threads,
                 )
+                if self.use_bias:
+                    self.user_factors[:, -2] = 1.0
                 solver(
                     Ciu,
                     self.item_factors,
@@ -172,6 +185,8 @@ class AlternatingLeastSquares(MatrixFactorizationBase):
                     self.regularization,
                     num_threads=self.num_threads,
                 )
+                if self.use_bias:
+                    self.item_factors[:, -1] = 1.0
                 progress.update(1)
 
                 if self.calculate_training_loss:
@@ -199,7 +214,7 @@ class AlternatingLeastSquares(MatrixFactorizationBase):
             user_items.tocsr(),
             userid,
             self.regularization,
-            self.factors,
+            self.dimensionality,
         )
 
     def recalculate_item(self, itemid, react_users):
@@ -209,7 +224,7 @@ class AlternatingLeastSquares(MatrixFactorizationBase):
             react_users.tocsr(),
             itemid,
             self.regularization,
-            self.factors,
+            self.dimensionality,
         )
 
     def explain(self, userid, user_items, itemid, user_weights=None, N=10):
@@ -245,7 +260,7 @@ class AlternatingLeastSquares(MatrixFactorizationBase):
         user_items = user_items.tocsr()
         if user_weights is None:
             A, _ = user_linear_equation(
-                self.item_factors, self.YtY, user_items, userid, self.regularization, self.factors
+                self.item_factors, self.YtY, user_items, userid, self.regularization, self.dimensionality
             )
             user_weights = scipy.linalg.cho_factor(A)
         seed_item = self.item_factors[itemid]
@@ -274,6 +289,30 @@ class AlternatingLeastSquares(MatrixFactorizationBase):
         items = (heapq.heappop(h) for i in range(len(h)))
         top_contributions = list((i, s) for s, i in items)[::-1]
         return total_score, top_contributions, user_weights
+
+    def set_bias_weight(self, weight=1):
+        """Sets weight for bias term
+
+        The weight used for the bias term when ranking items
+        Setting the weight to 0 helps remove biases related to
+        user behavior and item popularity
+
+        Parameters
+        ---------
+        weight : int
+            The bias weight. Range between 0-1
+        """
+        if 0 <= weight <= 1:
+            pass
+        else:
+            log.info("Invalid bias weight given.")
+            return
+        if self.use_bias:
+            self.user_factors[:, -2] = weight
+            self.user_factors[:, -1] = weight
+        else:
+            log.info("use_bias must be True to set bias_weight.")
+            return
 
     @property
     def solver(self):

@@ -7,6 +7,7 @@ import implicit.gpu.als
 def AlternatingLeastSquares(
     factors=100,
     regularization=0.01,
+    use_bias=False,
     dtype=np.float32,
     use_native=True,
     use_cg=True,
@@ -65,6 +66,7 @@ def AlternatingLeastSquares(
         return implicit.cpu.als.AlternatingLeastSquares(
             factors,
             regularization,
+            use_bias,
             dtype,
             use_native,
             use_cg,

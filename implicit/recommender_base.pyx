@@ -333,18 +333,24 @@ class MatrixFactorizationBase(RecommenderBase):
     def recalculate_item(self, itemid, react_users):
         raise NotImplementedError("recalculate_item is not supported with this model")
 
-    def similar_users(self, userid, N=10):
+    def similar_users(self, userid, N=10, remove_bias=False):
         factor = self.user_factors[userid]
         factors = self.user_factors
+        if remove_bias:
+            factor = factor[:-2]
+            factors = factors[:, :-2]
         norms = self.user_norms
         norm = norms[userid]
         return self._get_similarity_score(factor, norm, factors, norms, N)
 
     similar_users.__doc__ = RecommenderBase.similar_users.__doc__
 
-    def similar_items(self, itemid, N=10, react_users=None, recalculate_item=False):
+    def similar_items(self, itemid, N=10, react_users=None, recalculate_item=False, remove_bias=False):
         factor = self._item_factor(itemid, react_users, recalculate_item)
         factors = self.item_factors
+        if remove_bias:
+            factor = factor[:-2]
+            factors = factors[:, :-2]
         norms = self.item_norms
         if recalculate_item:
             norm = np.linalg.norm(factor)
