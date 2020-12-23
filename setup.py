@@ -5,7 +5,6 @@ import os.path
 import platform
 import sys
 
-from Cython.Build import cythonize
 from setuptools import Extension, find_packages, setup
 
 from cuda_setup import CUDA, build_ext
@@ -16,8 +15,15 @@ VERSION = "0.4.4"
 
 use_openmp = True
 
+try:
+    from Cython.Build import cythonize
+    use_cython = True
+except ImportError:
+    use_cython = False
 
-def define_extensions():
+use_cython = False  # cython causing problems
+
+def define_extensions(use_cython=False):
     if sys.platform.startswith("win"):
         # compile args from
         # https://msdn.microsoft.com/en-us/library/fwkeyyhe.aspx
@@ -45,7 +51,7 @@ def define_extensions():
     # except ImportError:
     #     raise ValueError("numpy is required to build from source")
 
-    src_ext = ".pyx"
+    src_ext = '.pyx' if use_cython else '.cpp'
     modules = [
         Extension(
             "implicit." + name,
@@ -102,7 +108,10 @@ def define_extensions():
     else:
         print("Failed to find CUDA toolkit. Building without GPU acceleration.")
 
-    return cythonize(modules)
+    if use_cython:
+        return cythonize(modules)
+    else:
+        return modules
 
 
 # set_gcc copied from glove-python project
@@ -186,7 +195,7 @@ setup(
     packages=find_packages(),
     install_requires=["numpy", "scipy>=0.16", "tqdm>=4.27"],
     setup_requires=["Cython>=0.24"],
-    ext_modules=define_extensions(),
+    ext_modules=define_extensions(use_cython),
     cmdclass={"build_ext": build_ext},
     test_suite="tests",
 )
